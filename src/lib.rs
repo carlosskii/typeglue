@@ -7,7 +7,7 @@ mod glue;
 
 
 #[proc_macro_error]
-#[proc_macro_derive(Glue)]
+#[proc_macro_derive(Glue, attributes(glue))]
 pub fn derive_glue(input: TokenStream) -> TokenStream {
     let ast: DeriveInput = syn::parse_macro_input!(input);
 

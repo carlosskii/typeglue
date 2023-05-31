@@ -48,6 +48,15 @@ fn test_glue_tuple() {
     assert_eq!(log.0[1], "World");
 }
 
+#[test]
+fn test_glue_tuple_backwards() {
+    let log = Log::from(vec!["Hello".to_string(), "World".to_string()]);
+    let vec: Vec<String> = log.into();
+
+    assert_eq!(vec[0], "Hello");
+    assert_eq!(vec[1], "World");
+}
+
 #[derive(Glue)]
 struct Ticker(String, i32);
 
@@ -123,4 +132,36 @@ fn test_glue_enum_multifield() {
         },
         _ => unreachable!()
     }
+}
+
+#[derive(Glue, Default)]
+struct User {
+    username: String,
+    #[glue(ignore)]
+    password: String
+}
+
+#[test]
+fn test_glue_named_ignore() {
+    let user = User::from("John".to_string());
+
+    assert_eq!(user.username, "John");
+    assert_eq!(user.password, "");
+}
+
+#[derive(Glue, Default)]
+struct Point {
+    x: i32,
+    y: i32,
+    #[glue(ignore)]
+    z: i32
+}
+
+#[test]
+fn test_glue_named_multifield_ignore() {
+    let point = Point::from((1, 2));
+
+    assert_eq!(point.x, 1);
+    assert_eq!(point.y, 2);
+    assert_eq!(point.z, 0);
 }

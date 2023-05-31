@@ -1,7 +1,7 @@
 use proc_macro::TokenStream;
 use proc_macro_error::{abort, emit_error};
-use quote::quote;
-use syn::{DeriveInput, Data, Fields, GenericParam};
+use quote::{quote, quote_spanned};
+use syn::{DeriveInput, Data, Fields, GenericParam, Meta, Field};
 
 
 pub fn struct_named_impl(ast: DeriveInput) -> TokenStream {
@@ -21,9 +21,41 @@ pub fn struct_named_impl(ast: DeriveInput) -> TokenStream {
     }).collect::<Vec<_>>();
 
     let fields = data.fields.iter().collect::<Vec<_>>();
+    let ignored_fields = get_ignored_fields(&fields);
+
+    if ignored_fields.len() == fields.len() {
+        abort!(name, "Glue structs cannot ignore all fields")
+    }
+
+    let fields = fields.iter().filter(|f| {
+        !ignored_fields.contains(f)
+    }).collect::<Vec<_>>();
+
+    let ensure_default = if ignored_fields.is_empty() {
+        quote! {}
+    } else {
+        quote_spanned! { name.span() =>
+            struct _AssertDefault where #name: ::core::default::Default;
+        }
+    };
+
+    let mut ending_defaults = ignored_fields.iter().map(|f| {
+        let field_name = f.ident.as_ref().unwrap();
+
+        quote! {
+            #field_name: ::core::default::Default::default()
+        }
+    }).collect::<Vec<_>>();
+
+    if !ending_defaults.is_empty() {
+        ending_defaults.insert(0, quote! { , });
+    }
+
+    let ending_defaults = quote! {
+        #(#ending_defaults)*
+    };
 
     if fields.len() == 1 {
-
         let field = fields[0];
         let field_name = field.ident.as_ref().unwrap();
         let field_ty = &field.ty;
@@ -35,8 +67,11 @@ pub fn struct_named_impl(ast: DeriveInput) -> TokenStream {
         let gen = quote! {
             impl #generics From<#field_ty> for #name #generics {
                 fn from(value: #field_ty) -> Self {
+                    #ensure_default
+
                     Self {
                         #field_name: value
+                        #ending_defaults
                     }
                 }
             }
@@ -50,7 +85,6 @@ pub fn struct_named_impl(ast: DeriveInput) -> TokenStream {
 
         gen.into()
     } else {
-
         let field_names = fields.iter().map(|f| f.ident.as_ref().unwrap()).collect::<Vec<_>>();
         let field_tys = fields.iter().map(|f| &f.ty).collect::<Vec<_>>();
 
@@ -71,8 +105,11 @@ pub fn struct_named_impl(ast: DeriveInput) -> TokenStream {
         let gen = quote! {
             impl #generics From<(#(#field_tys),*)> for #name #generics {
                 fn from(value: (#(#field_tys),*)) -> Self {
+                    #ensure_default
+
                     Self {
                         #(#fields),*
+                        #ending_defaults
                     }
                 }
             }
@@ -100,6 +137,11 @@ pub fn struct_unnamed_impl(ast: DeriveInput) -> TokenStream {
     }).collect::<Vec<_>>();
 
     let fields = data.fields.iter().collect::<Vec<_>>();
+    let ignored_fields = get_ignored_fields(&fields);
+
+    if !ignored_fields.is_empty() {
+        abort!(name, "Glue tuple structs cannot ignore fields")
+    }
 
     if fields.len() == 1 {
         let field = fields[0];
@@ -113,6 +155,12 @@ pub fn struct_unnamed_impl(ast: DeriveInput) -> TokenStream {
             impl #generics From<#field_ty> for #name #generics {
                 fn from(value: #field_ty) -> Self {
                     Self(value)
+                }
+            }
+
+            impl #generics From<#name #generics> for #field_ty {
+                fn from(value: #name #generics) -> Self {
+                    value.0
                 }
             }
         };
@@ -198,4 +246,31 @@ pub fn enum_impl(ast: DeriveInput) -> TokenStream {
     };
 
     gen.into()
+}
+
+fn get_ignored_fields<'a>(fields: &'a [&'a Field]) -> Vec<&'a Field> {
+    fields.iter().filter(|f| {
+        f.attrs.iter().any(|a| {
+            if !a.path().is_ident("glue") {
+                return false;
+            }
+
+            if let Ok(meta) = a.parse_args() {
+                if let Meta::Path(path) = meta {
+                    if path.is_ident("ignore") {
+                        true
+                    } else {
+                        emit_error!(a, "Expected `#[glue(ignore)]`");
+                        false
+                    }
+                } else {
+                    emit_error!(a, "Expected `#[glue(ignore)]`");
+                    false
+                }
+            } else {
+                emit_error!(a, "Expected `#[glue(ignore)]`");
+                false
+            }
+        })
+    }).cloned().collect::<Vec<_>>()
 }
