@@ -40,6 +40,12 @@ pub fn struct_named_impl(ast: DeriveInput) -> TokenStream {
                     }
                 }
             }
+
+            impl #generics From<#name #generics> for #field_ty {
+                fn from(value: #name #generics) -> Self {
+                    value.#field_name
+                }
+            }
         };
 
         gen.into()

@@ -12,6 +12,15 @@ fn test_glue_basic() {
     assert_eq!(person.name, "John");
 }
 
+#[test]
+fn test_glue_backwards() {
+    let name = String::from("John");
+    let person: Person = name.into();
+
+    let person_name = String::from(person);
+    assert_eq!(person_name, "John");
+}
+
 #[derive(Glue)]
 struct Xyz {
     x: i32,
